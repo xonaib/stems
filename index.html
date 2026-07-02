@@ -371,6 +371,19 @@ textarea { resize: none; height: 80px; }
   background: rgba(240,165,0,0.12); border-radius: 20px; padding: 4px 10px;
 }
 
+/* ─── Toast ─── */
+.toast {
+  position: fixed;
+  bottom: calc(var(--nav-height) + 80px);
+  left: 50%; transform: translateX(-50%);
+  background: var(--text); color: var(--bg);
+  font-size: 13px; font-weight: 600;
+  padding: 10px 18px; border-radius: 20px;
+  opacity: 0; transition: opacity 0.2s;
+  pointer-events: none; white-space: nowrap; z-index: 300;
+}
+.toast.show { opacity: 1; }
+
 /* ─── Notification banner ─── */
 .notif-banner {
   background: var(--accent-dim); border: 1px solid var(--accent);
@@ -636,6 +649,7 @@ function renderColorPicker() {
 function selectColor(c) { selectedColor = c; renderColorPicker(); }
 
 function addBranch(name, color) {
+  const fromUI = !name;
   name  = name  || document.getElementById('new-branch-name').value.trim();
   color = color || selectedColor;
   if (!name) return null;
@@ -644,10 +658,11 @@ function addBranch(name, color) {
   const b = { id: Date.now().toString(), name, color };
   branches.push(b);
   save();
-  if (!name) {
+  if (fromUI) {
     document.getElementById('new-branch-name').value = '';
     selectedColor = COLORS[branches.length % COLORS.length];
     renderBranchesPage();
+    showToast(`"${b.name}" added`);
   }
   return b;
 }
@@ -1116,6 +1131,21 @@ maybeRemind();
 document.addEventListener('click', e => {
   if (!e.target.closest('#ac-wrap')) closeDropdown();
 });
+
+// ─── Toast ───────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast'; el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
 
 // ─── Supabase ─────────────────────────────────────────────────────
 const SUPABASE_URL      = 'https://myfgfszskdrocgacpsmb.supabase.co';
