@@ -409,15 +409,21 @@ textarea { resize: none; height: 80px; }
     <div id="auth-form">
       <div class="form-label">Your email</div>
       <input type="email" id="auth-email" placeholder="you@example.com" style="margin-bottom:12px;">
-      <button class="btn btn-primary" onclick="sendMagicLink()" id="auth-btn">Send magic link</button>
+      <button class="btn btn-primary" onclick="sendMagicLink()" id="auth-btn">Send code</button>
       <p style="font-size:12px;color:var(--muted);margin-top:16px;text-align:center;">
-        We'll email you a sign-in link. No password needed.
+        We'll email you a 6-digit code. No password needed.
       </p>
     </div>
-    <div id="auth-sent" style="display:none;text-align:center;">
-      <div style="font-size:32px;margin-bottom:12px;">📬</div>
-      <div style="font-weight:600;margin-bottom:8px;">Check your email</div>
-      <div style="font-size:13px;color:var(--muted);">Click the link we sent to sign in. You can close this tab.</div>
+    <div id="auth-sent" style="display:none;">
+      <div style="font-weight:600;margin-bottom:6px;">Check your email</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">Enter the 6-digit code we sent to <span id="auth-email-display" style="color:var(--text);font-weight:500;"></span></div>
+      <div class="form-label">Code</div>
+      <input type="number" id="auth-otp" placeholder="123456" maxlength="6" style="margin-bottom:12px;letter-spacing:6px;font-size:22px;text-align:center;">
+      <button class="btn btn-primary" onclick="verifyOtp()" id="auth-verify-btn">Verify</button>
+      <button onclick="document.getElementById('auth-sent').style.display='none';document.getElementById('auth-form').style.display='block';"
+              style="display:block;margin-top:12px;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;width:100%;text-align:center;">
+        ← Back
+      </button>
     </div>
     <div style="margin-top:24px;text-align:center;">
       <button onclick="useOffline()" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;">
@@ -1248,10 +1254,24 @@ async function sendMagicLink() {
   if (!email) return;
   const btn = document.getElementById('auth-btn');
   btn.textContent = 'Sending…'; btn.disabled = true;
-  const { error } = await db.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin } });
-  if (error) { alert(error.message); btn.textContent = 'Send magic link'; btn.disabled = false; return; }
+  const { error } = await db.auth.signInWithOtp({ email });
+  if (error) { alert(error.message); btn.textContent = 'Send code'; btn.disabled = false; return; }
   document.getElementById('auth-form').style.display = 'none';
   document.getElementById('auth-sent').style.display = 'block';
+  document.getElementById('auth-email-display').textContent = email;
+  document.getElementById('auth-otp').focus();
+  btn.textContent = 'Send code'; btn.disabled = false;
+}
+
+async function verifyOtp() {
+  const email = document.getElementById('auth-email').value.trim();
+  const token = document.getElementById('auth-otp').value.trim();
+  if (!token || token.length < 6) { alert('Enter the 6-digit code from your email.'); return; }
+  const btn = document.getElementById('auth-verify-btn');
+  btn.textContent = 'Verifying…'; btn.disabled = true;
+  const { error } = await db.auth.verifyOtp({ email, token, type: 'email' });
+  if (error) { alert(error.message); btn.textContent = 'Verify'; btn.disabled = false; return; }
+  // onAuthStateChange will handle the rest
 }
 
 function useOffline() {
