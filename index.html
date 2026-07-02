@@ -566,6 +566,7 @@ textarea { resize: none; height: 80px; }
       <input class="autocomplete-input" id="ac-input"
              placeholder="Search or type a branch name…"
              oninput="onAcInput()"
+             onfocus="onAcFocus()"
              onkeydown="onAcKeydown(event)"
              autocomplete="off">
       <div class="autocomplete-dropdown" id="ac-dropdown"></div>
@@ -667,6 +668,34 @@ function addBranch(name, color) {
   return b;
 }
 
+function startEditBranch(id, el) {
+  const b = branches.find(b => b.id === id);
+  if (!b) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = b.name;
+  input.maxLength = 30;
+  input.style.cssText = 'font-size:15px;font-weight:600;font-family:inherit;background:transparent;border:none;border-bottom:1.5px solid var(--accent);outline:none;color:var(--text);width:100%;padding:0;';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  function save() {
+    const name = input.value.trim();
+    if (name && name !== b.name) {
+      b.name = name;
+      window.save();
+      showToast('Renamed to "' + name + '"');
+    }
+    renderBranchesPage();
+  }
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.removeEventListener('blur', save); renderBranchesPage(); }
+  });
+}
+
 function deleteBranch(id) {
   if (!confirm('Delete this branch? Logs will remain but unlinked.')) return;
   branches = branches.filter(b => b.id !== id);
@@ -683,7 +712,7 @@ function renderBranchesPage() {
       <div class="branch-item">
         <div class="branch-color-dot" style="background:${b.color}"></div>
         <div class="branch-info">
-          <div class="branch-name">${b.name}</div>
+          <div class="branch-name" onclick="startEditBranch('${b.id}', this)" title="Tap to rename" style="cursor:pointer;">${b.name}</div>
           <div class="branch-stats">${fmtHours(total)} logged · ${count} sessions</div>
         </div>
         <button class="branch-delete" onclick="deleteBranch('${b.id}')">
@@ -725,29 +754,43 @@ function toggleNotifs(el) {
 }
 
 // ─── Autocomplete ────────────────────────────────────────────────
+function onAcFocus() {
+  const q = document.getElementById('ac-input').value.trim();
+  if (!q) showAcDropdown('');
+}
+
 function onAcInput() {
   const q = document.getElementById('ac-input').value.trim();
   acFocusIndex = -1;
-  if (!q) { closeDropdown(); return; }
+  showAcDropdown(q);
+}
 
-  const matches = branches.filter(b => b.name.toLowerCase().includes(q.toLowerCase()));
+function showAcDropdown(q) {
+  const matches = q
+    ? branches.filter(b => b.name.toLowerCase().includes(q.toLowerCase()))
+    : branches;
   const exactMatch = branches.find(b => b.name.toLowerCase() === q.toLowerCase());
 
-  let html = matches.map((b, i) => `
-    <div class="ac-item" data-id="${b.id}" onclick="selectBranch('${b.id}')">
-      <div class="ac-dot" style="background:${b.color}"></div>
-      ${b.name}
-    </div>`).join('');
+  let html = '';
 
-  if (!exactMatch) {
-    const autoColor = COLORS[branches.length % COLORS.length];
-    html += `
-      <div class="ac-item" data-new="${q}" data-color="${autoColor}"
-           onclick="selectNewBranch('${q}','${autoColor}')">
-        <div class="ac-dot" style="background:${autoColor}"></div>
-        ${q}
-        <span class="ac-new">+ Create</span>
-      </div>`;
+  if (!matches.length && !q) {
+    html = `<div class="ac-item" style="color:var(--muted);cursor:default;">Type to create a new branch</div>`;
+  } else {
+    html = matches.map(b => `
+      <div class="ac-item" data-id="${b.id}" onclick="selectBranch('${b.id}')">
+        <div class="ac-dot" style="background:${b.color}"></div>
+        ${b.name}
+      </div>`).join('');
+
+    if (q && !exactMatch) {
+      const autoColor = COLORS[branches.length % COLORS.length];
+      html += `
+        <div class="ac-item" onclick="selectNewBranch('${q}','${autoColor}')">
+          <div class="ac-dot" style="background:${autoColor}"></div>
+          ${q}
+          <span class="ac-new">+ Create</span>
+        </div>`;
+    }
   }
 
   document.getElementById('ac-dropdown').innerHTML = html;
