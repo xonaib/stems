@@ -6,8 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f" id="theme-color-meta">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Stems</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -384,6 +387,36 @@ textarea { resize: none; height: 80px; }
 </style>
 </head>
 <body>
+<!-- ─── Auth Screen ─── -->
+<div id="auth-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;">
+  <div style="width:100%;max-width:360px;">
+    <div style="font-size:40px;margin-bottom:8px;">🌿</div>
+    <div style="font-size:26px;font-weight:700;margin-bottom:6px;">Stems</div>
+    <div style="font-size:14px;color:var(--muted);margin-bottom:32px;">Sign in to sync across devices</div>
+    <div id="auth-form">
+      <div class="form-label">Your email</div>
+      <input type="email" id="auth-email" placeholder="you@example.com" style="margin-bottom:12px;">
+      <button class="btn btn-primary" onclick="sendMagicLink()" id="auth-btn">Send magic link</button>
+      <p style="font-size:12px;color:var(--muted);margin-top:16px;text-align:center;">
+        We'll email you a sign-in link. No password needed.
+      </p>
+    </div>
+    <div id="auth-sent" style="display:none;text-align:center;">
+      <div style="font-size:32px;margin-bottom:12px;">📬</div>
+      <div style="font-weight:600;margin-bottom:8px;">Check your email</div>
+      <div style="font-size:13px;color:var(--muted);">Click the link we sent to sign in. You can close this tab.</div>
+    </div>
+    <div style="margin-top:24px;text-align:center;">
+      <button onclick="useOffline()" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;">
+        Use offline (this device only)
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Sync status ─── -->
+<div id="sync-bar" style="display:none;position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--accent);font-size:12px;font-weight:600;text-align:center;padding:6px;z-index:50;"></div>
+
 <div id="app">
 
   <!-- ─── Dashboard ─── -->
@@ -1084,11 +1117,156 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#ac-wrap')) closeDropdown();
 });
 
+// ─── Supabase ─────────────────────────────────────────────────────
+const SUPABASE_URL      = 'https://myfgfszskdrocgacpsmb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15Zmdmc3pza2Ryb2NnYWNwc21iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5OTU4NjQsImV4cCI6MjA5ODU3MTg2NH0.BQ396brLnxymrRmDolSaDOJctDl-QZn7yXoVJNjEsco';
+
+const supabaseReady = SUPABASE_URL !== 'YOUR_SUPABASE_URL';
+const db = supabaseReady ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+let currentUser = null;
+
+async function initAuth() {
+  if (!supabaseReady) { startApp(); return; }
+
+  // Handle magic link redirect
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    await syncFromSupabase();
+    startApp();
+  } else {
+    showAuthScreen();
+  }
+
+  db.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      currentUser = session.user;
+      await syncFromSupabase();
+      hideAuthScreen();
+      startApp();
+    }
+    if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      showAuthScreen();
+    }
+  });
+}
+
+function showAuthScreen() {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.querySelector('.fab').style.display = 'none';
+}
+
+function hideAuthScreen() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  document.querySelector('.fab').style.display = '';
+}
+
+function startApp() {
+  hideAuthScreen();
+  renderDash();
+  renderColorPicker();
+}
+
+async function sendMagicLink() {
+  const email = document.getElementById('auth-email').value.trim();
+  if (!email) return;
+  const btn = document.getElementById('auth-btn');
+  btn.textContent = 'Sending…'; btn.disabled = true;
+  const { error } = await db.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin } });
+  if (error) { alert(error.message); btn.textContent = 'Send magic link'; btn.disabled = false; return; }
+  document.getElementById('auth-form').style.display = 'none';
+  document.getElementById('auth-sent').style.display = 'block';
+}
+
+function useOffline() {
+  startApp();
+}
+
+// ─── Sync ─────────────────────────────────────────────────────────
+function showSync(msg) {
+  const el = document.getElementById('sync-bar');
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideSync() { document.getElementById('sync-bar').style.display = 'none'; }
+
+async function syncFromSupabase() {
+  if (!currentUser || !supabaseReady) return;
+  showSync('Syncing…');
+  try {
+    const [{ data: remoteBranches }, { data: remoteLogs }] = await Promise.all([
+      db.from('branches').select('*').eq('user_id', currentUser.id),
+      db.from('logs').select('*').eq('user_id', currentUser.id).order('ts', { ascending: false })
+    ]);
+
+    // Merge remote into local (remote wins on conflict)
+    const localBranchIds = new Set(branches.map(b => b.id));
+    (remoteBranches || []).forEach(b => {
+      if (!localBranchIds.has(b.id)) branches.push({ id: b.id, name: b.name, color: b.color });
+    });
+
+    const localLogIds = new Set(logs.map(l => l.id));
+    (remoteLogs || []).forEach(l => {
+      if (!localLogIds.has(l.id)) logs.push({ id: l.id, branchId: l.branch_id, minutes: l.minutes, note: l.note || '', ts: l.ts });
+    });
+    logs.sort((a, b) => b.ts - a.ts);
+
+    // Push local-only entries up
+    await pushLocalToSupabase(remoteBranches || [], remoteLogs || []);
+
+    save();
+  } catch (e) { console.error('Sync error', e); }
+  hideSync();
+}
+
+async function pushLocalToSupabase(remoteBranches, remoteLogs) {
+  if (!currentUser) return;
+  const remoteBranchIds = new Set(remoteBranches.map(b => b.id));
+  const remoteLogIds    = new Set(remoteLogs.map(l => l.id));
+
+  const newBranches = branches.filter(b => !remoteBranchIds.has(b.id)).map(b => ({
+    id: b.id, user_id: currentUser.id, name: b.name, color: b.color
+  }));
+  if (newBranches.length) await db.from('branches').upsert(newBranches);
+
+  const newLogs = logs.filter(l => !remoteLogIds.has(l.id)).map(l => ({
+    id: l.id, user_id: currentUser.id, branch_id: l.branchId, minutes: l.minutes, note: l.note, ts: l.ts
+  }));
+  if (newLogs.length) await db.from('logs').upsert(newLogs);
+}
+
+// Write-through: save to Supabase on every local write
+const _save = save;
+async function saveAndSync() {
+  _save();
+  if (!currentUser || !supabaseReady) return;
+  await pushLocalToSupabase(
+    (await db.from('branches').select('id').eq('user_id', currentUser.id)).data || [],
+    (await db.from('logs').select('id').eq('user_id', currentUser.id)).data || []
+  );
+}
+
+// Override save to also sync
+function save() {
+  localStorage.setItem('gt_branches', JSON.stringify(branches));
+  localStorage.setItem('gt_logs',     JSON.stringify(logs));
+  localStorage.setItem('gt_settings', JSON.stringify(settings));
+  if (currentUser && supabaseReady) {
+    pushLocalToSupabase([], []).catch(console.error);
+  }
+}
+
+// ─── Service Worker ────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(console.error);
+}
+
 // ─── Init ─────────────────────────────────────────────────────────
 const savedTheme = localStorage.getItem('gt_theme') || 'dark';
 applyTheme(savedTheme);
-renderDash();
-renderColorPicker();
+initAuth();
 </script>
 </body>
 </html>

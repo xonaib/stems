@@ -22,8 +22,13 @@
 
 ## In Progress 🔄
 
-- GitHub repo setup
-- Vercel deployment (needed for mobile PWA + notifications on iOS)
+- PWA manifest + service worker (for Add to Home Screen on iOS/Android)
+
+## Deployed 🚀
+
+- **Live:** https://stems-three.vercel.app
+- GitHub: https://github.com/xonaib/stems
+- Hosting: Vercel (auto-deploys on push to main)
 
 ---
 
