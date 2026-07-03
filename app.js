@@ -441,17 +441,29 @@ function renderHistory() {
 
 function logItemHTML(l) {
   const b = branches.find(b => b.id === l.branchId);
-  return `<div class="log-item">
+  return `<div class="log-item" id="log-${l.id}">
     <div class="log-dot" style="background:${b ? b.color : '#6b6b6b'}"></div>
     <div class="log-meta">
       <div class="log-goal">${b ? b.name : 'Unknown branch'}</div>
       ${l.note ? `<div class="log-note">${l.note}</div>` : ''}
     </div>
-    <div style="text-align:right">
+    <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
       <div class="log-duration">${fmtHours(l.minutes)}</div>
       <div class="log-time">${fmtTime(new Date(l.ts))}</div>
+      <button onclick="deleteLog('${l.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0;line-height:1;" title="Delete">✕</button>
     </div>
   </div>`;
+}
+
+async function deleteLog(id) {
+  if (!confirm('Delete this log entry?')) return;
+  logs = logs.filter(l => l.id !== id);
+  save();
+  if (currentUser && supabaseReady) {
+    await db.from('logs').delete().eq('id', id).eq('user_id', currentUser.id);
+  }
+  renderDash();
+  renderHistory();
 }
 
 // ─── Export / Import ──────────────────────────────────────────────
