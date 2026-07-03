@@ -272,6 +272,11 @@ function openLog() {
   document.getElementById('selected-chip').classList.remove('show');
   document.getElementById('ac-wrap').style.display = '';
   closeDropdown();
+  // Default date/time to now
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('log-date').value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  document.getElementById('log-time').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   document.getElementById('log-modal').classList.add('open');
   setTimeout(() => document.getElementById('ac-input').focus(), 300);
 }
@@ -293,7 +298,10 @@ function submitLog() {
   const mins = parseInt(document.getElementById('log-minutes').value);
   if (!mins || mins < 1) { alert('Enter time spent.'); return; }
   const note = document.getElementById('log-note').value.trim();
-  logs.unshift({ id: Date.now().toString(), branchId, minutes: mins, note, ts: Date.now() });
+  const dateVal = document.getElementById('log-date').value;
+  const timeVal = document.getElementById('log-time').value;
+  const ts = dateVal && timeVal ? new Date(`${dateVal}T${timeVal}`).getTime() : Date.now();
+  logs.unshift({ id: Date.now().toString(), branchId, minutes: mins, note, ts });
   save(); closeLog(); renderDash();
   showToast('Session logged ✓');
 }
