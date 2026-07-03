@@ -367,9 +367,11 @@ function renderHeatmap() {
     }).join('');
     return `<div class="heatmap-goal">
       <div class="heatmap-goal-name">${b.name}</div>
-      <div class="heatmap-wrap"><div class="heatmap-grid">${cells}</div></div>
+      <div class="heatmap-wrap" data-heatmap><div class="heatmap-grid">${cells}</div></div>
     </div>`;
   }).join('');
+  // Scroll all heatmap rows to the right so today is visible
+  el.querySelectorAll('[data-heatmap]').forEach(w => { w.scrollLeft = w.scrollWidth; });
 }
 
 function renderWeeklyChart() {
