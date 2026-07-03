@@ -525,9 +525,10 @@ function isActiveDay() {
 }
 function maybeRemind() {
   if (!settings.notifsEnabled || Notification.permission !== 'granted' || isInQuietHours() || !isActiveDay()) return;
-  const last = parseInt(localStorage.getItem('gt_last_notif') || '0');
-  if (Date.now() - last > 60 * 60 * 1000) {
-    localStorage.setItem('gt_last_notif', Date.now().toString());
+  const now = new Date();
+  const hourKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
+  if (localStorage.getItem('gt_last_notif_hour') !== hourKey) {
+    localStorage.setItem('gt_last_notif_hour', hourKey);
     new Notification('Stems 🌿', { body: 'What did you work on this past hour?' });
   }
 }
@@ -568,6 +569,14 @@ function hideAuthScreen() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app').style.display = '';
   document.querySelector('.fab').style.display = '';
+  const emailEl = document.getElementById('account-email');
+  if (emailEl && currentUser) emailEl.textContent = currentUser.email;
+}
+
+async function signOut() {
+  if (supabaseReady) await db.auth.signOut();
+  currentUser = null;
+  showAuthScreen();
 }
 function startApp() { hideAuthScreen(); renderDash(); renderColorPicker(); }
 function useOffline() { startApp(); }
@@ -656,6 +665,7 @@ async function syncFromSupabase() {
     logs.sort((a, b) => b.ts - a.ts);
     await pushLocalToSupabase(remoteBranches || [], remoteLogs || []);
     save();
+    renderDash();
   } catch (e) { console.error('Sync error', e); }
   hideSync();
 }
