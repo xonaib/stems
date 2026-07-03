@@ -565,6 +565,8 @@ function toggleAuthMode() {
     ? 'Already have an account? <span onclick="toggleAuthMode()" style="color:var(--accent);cursor:pointer;font-weight:600;">Sign in</span>'
     : 'First time? <span onclick="toggleAuthMode()" style="color:var(--accent);cursor:pointer;font-weight:600;">Create account</span>';
   document.getElementById('pw-reveal').style.display = authMode === 'signup' ? 'none' : 'flex';
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-password').value = '';
 }
 
 async function authSubmit() {
@@ -592,8 +594,15 @@ async function authSubmit() {
       reset(); return;
     }
     if (authMode === 'signup' && data?.user && !data?.session) {
-      alert('Account created! Check your email to confirm, then sign in.');
-      reset(); return;
+      // Email confirmation still pending — try signing in immediately anyway
+      const { data: si, error: siErr } = await db.auth.signInWithPassword({ email, password });
+      if (siErr || !si?.session) {
+        // Confirm via SQL if this keeps happening, but inform user for now
+        alert('Account created! You may need to confirm your email before signing in.');
+        reset(); return;
+      }
+      // si session exists — onAuthStateChange will fire
+      return;
     }
     // Success — onAuthStateChange fires startApp(), no need to reset
   } catch (e) {
