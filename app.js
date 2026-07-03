@@ -516,10 +516,19 @@ let currentUser = null;
 async function initAuth() {
   if (!supabaseReady) { startApp(); return; }
   const { data: { session } } = await db.auth.getSession();
-  if (session) { currentUser = session.user; await syncFromSupabase(); startApp(); }
-  else showAuthScreen();
+  if (session) {
+    currentUser = session.user;
+    startApp();                  // show app immediately
+    syncFromSupabase();          // sync in background
+  } else {
+    showAuthScreen();
+  }
   db.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session) { currentUser = session.user; await syncFromSupabase(); startApp(); }
+    if (event === 'SIGNED_IN' && session) {
+      currentUser = session.user;
+      startApp();                // show app immediately
+      syncFromSupabase();        // sync in background
+    }
     if (event === 'SIGNED_OUT') { currentUser = null; showAuthScreen(); }
   });
 }
