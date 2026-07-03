@@ -6,7 +6,7 @@ const COLORS = ['#7c6af7','#4caf7d','#f0a500','#f75a5a','#38bdf8','#e879f9','#fb
 // ─── State ────────────────────────────────────────────────────────
 let branches = JSON.parse(localStorage.getItem('gt_branches') || '[]');
 let logs     = JSON.parse(localStorage.getItem('gt_logs')     || '[]');
-let settings = JSON.parse(localStorage.getItem('gt_settings') || '{"quietFrom":"22:00","quietTo":"08:00","notifsEnabled":false}');
+let settings = JSON.parse(localStorage.getItem('gt_settings') || '{"quietFrom":"22:00","quietTo":"08:00","notifsEnabled":false,"activeDays":[1,2,3,4,5]}');
 
 let selectedBranchId  = null;
 let selectedBranchNew = null;
@@ -150,6 +150,18 @@ function renderBranchesPage() {
   document.getElementById('notif-toggle').checked = settings.notifsEnabled;
   document.getElementById('quiet-from').value     = settings.quietFrom;
   document.getElementById('quiet-to').value       = settings.quietTo;
+  renderDayPicker();
+}
+
+function renderDayPicker() {
+  const days = ['S','M','T','W','T','F','S'];
+  const vals = [0,1,2,3,4,5,6];
+  const active = settings.activeDays || [1,2,3,4,5];
+  const el = document.getElementById('day-picker');
+  if (!el) return;
+  el.innerHTML = vals.map((d, i) => `
+    <div class="day-chip ${active.includes(d) ? 'on' : ''}" onclick="toggleDay(${d})">${days[i]}</div>
+  `).join('');
 }
 
 // ─── Settings ─────────────────────────────────────────────────────
@@ -157,6 +169,16 @@ function saveSettings() {
   settings.quietFrom = document.getElementById('quiet-from').value;
   settings.quietTo   = document.getElementById('quiet-to').value;
   save();
+}
+
+function toggleDay(d) {
+  const active = settings.activeDays || [1,2,3,4,5];
+  const idx = active.indexOf(d);
+  if (idx === -1) active.push(d);
+  else active.splice(idx, 1);
+  settings.activeDays = active;
+  save();
+  renderDayPicker();
 }
 
 function toggleNotifs(el) {
@@ -497,8 +519,12 @@ function isInQuietHours() {
   const from = fH * 60 + fM, to = tH * 60 + tM;
   return from > to ? cur >= from || cur < to : cur >= from && cur < to;
 }
+function isActiveDay() {
+  const day = new Date().getDay(); // 0=Sun, 1=Mon … 6=Sat
+  return (settings.activeDays || [1,2,3,4,5]).includes(day);
+}
 function maybeRemind() {
-  if (!settings.notifsEnabled || Notification.permission !== 'granted' || isInQuietHours()) return;
+  if (!settings.notifsEnabled || Notification.permission !== 'granted' || isInQuietHours() || !isActiveDay()) return;
   const last = parseInt(localStorage.getItem('gt_last_notif') || '0');
   if (Date.now() - last > 60 * 60 * 1000) {
     localStorage.setItem('gt_last_notif', Date.now().toString());

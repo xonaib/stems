@@ -326,6 +326,15 @@ textarea { resize: none; height: 80px; }
 .settings-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .time-row input[type="time"] { font-size: 14px; padding: 10px 12px; }
+.day-chip {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  background: var(--surface2); color: var(--muted);
+  border: 1px solid var(--border); user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.day-chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* ─── Toggle switch ─── */
 .toggle { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
