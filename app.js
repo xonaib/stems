@@ -646,7 +646,7 @@ async function signOut() {
   currentUser = null;
   showAuthScreen();
 }
-function startApp() { hideAuthScreen(); renderDash(); renderColorPicker(); }
+function startApp() { hideAuthScreen(); renderDash(); renderColorPicker(); window.dispatchEvent(new Event('stems-ready')); }
 function useOffline() { startApp(); }
 
 function togglePasswordReveal() {
@@ -750,6 +750,14 @@ async function pushLocalToSupabase(remoteBranches, remoteLogs) {
 
 // ─── Service Worker ───────────────────────────────────────────────
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(console.error);
+
+// ─── Open log modal from notification tap ────────────────────────
+navigator.serviceWorker?.addEventListener('message', e => {
+  if (e.data?.type === 'OPEN_LOG') openLog();
+});
+if (new URLSearchParams(location.search).get('openlog')) {
+  window.addEventListener('stems-ready', () => openLog(), { once: true });
+}
 
 // ─── Re-auth on app focus (handles backgrounded PWA session expiry) ──
 document.addEventListener('visibilitychange', () => {

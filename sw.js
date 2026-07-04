@@ -1,4 +1,4 @@
-const CACHE = 'stems-v1';
+const CACHE = 'stems-v2';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 // Install: cache static assets
@@ -47,14 +47,18 @@ self.addEventListener('push', e => {
   );
 });
 
-// Notification click: focus or open the app
+// Notification click: open app to log modal
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       const existing = list.find(c => c.url.includes(self.location.origin));
-      if (existing) return existing.focus();
-      return clients.openWindow('/');
+      if (existing) {
+        existing.focus();
+        existing.postMessage({ type: 'OPEN_LOG' });
+        return;
+      }
+      return clients.openWindow('/?openlog=1');
     })
   );
 });
