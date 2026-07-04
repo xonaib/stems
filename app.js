@@ -216,11 +216,12 @@ async function subscribePush() {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
     });
     await db.from('push_subscriptions').upsert({
-      user_id:     currentUser.id,
-      subscription: sub.toJSON(),
-      quiet_from:  settings.quietFrom,
-      quiet_to:    settings.quietTo,
-      active_days: settings.activeDays ?? [1,2,3,4,5]
+      user_id:             currentUser.id,
+      subscription:        sub.toJSON(),
+      quiet_from:          settings.quietFrom,
+      quiet_to:            settings.quietTo,
+      active_days:         settings.activeDays ?? [1,2,3,4,5],
+      utc_offset_minutes:  new Date().getTimezoneOffset()
     }, { onConflict: 'user_id' });
   } catch (e) { console.error('Push subscribe failed', e); }
 }

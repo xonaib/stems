@@ -10,7 +10,6 @@ const SUPABASE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 webpush.setVapidDetails('mailto:zonaibshah@gmail.com', VAPID_PUBLIC, VAPID_PRIVATE);
 
 Deno.serve(async (req) => {
-  // Simple secret check so only cron-job.org can trigger this
   const auth = req.headers.get('authorization') ?? '';
   if (auth !== `Bearer ${CRON_SECRET}`) {
     return new Response('Unauthorized', { status: 401 });
@@ -20,23 +19,29 @@ Deno.serve(async (req) => {
   const { data: subs, error } = await supabase.from('push_subscriptions').select('*');
   if (error) return new Response('DB error', { status: 500 });
 
-  const now     = new Date();
-  const hourUTC = now.getUTCHours();
-  const dayUTC  = now.getUTCDay(); // 0=Sun … 6=Sat
-
+  const nowUTC = new Date();
   let sent = 0, skipped = 0;
+
   for (const row of subs ?? []) {
     try {
-      // Check active days (stored in UTC day numbers)
-      const activeDays: number[] = row.active_days ?? [1,2,3,4,5];
-      if (!activeDays.includes(dayUTC)) { skipped++; continue; }
+      // Convert UTC to user's local time using their stored offset
+      // utc_offset_minutes: JS getTimezoneOffset() value (negative for east of UTC)
+      // e.g. PKT (UTC+5) = -300
+      const offsetMs = (row.utc_offset_minutes ?? 0) * 60 * 1000;
+      const localTime = new Date(nowUTC.getTime() - offsetMs);
+      const localHour = localTime.getUTCHours();
+      const localDay  = localTime.getUTCDay(); // 0=Sun … 6=Sat
 
-      // Check quiet hours (stored as "HH:MM" UTC)
+      // Check active days in local time
+      const activeDays: number[] = row.active_days ?? [1,2,3,4,5];
+      if (!activeDays.includes(localDay)) { skipped++; continue; }
+
+      // Check quiet hours in local time
       const [fH] = (row.quiet_from ?? '22:00').split(':').map(Number);
       const [tH] = (row.quiet_to   ?? '08:00').split(':').map(Number);
       const inQuiet = fH > tH
-        ? hourUTC >= fH || hourUTC < tH
-        : hourUTC >= fH && hourUTC < tH;
+        ? localHour >= fH || localHour < tH
+        : localHour >= fH && localHour < tH;
       if (inQuiet) { skipped++; continue; }
 
       await webpush.sendNotification(
@@ -46,7 +51,6 @@ Deno.serve(async (req) => {
       sent++;
     } catch (e) {
       console.error('Push failed for', row.user_id, e.message);
-      // Remove invalid subscriptions
       if (e.statusCode === 410) {
         await supabase.from('push_subscriptions').delete().eq('id', row.id);
       }
