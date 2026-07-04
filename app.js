@@ -1,6 +1,7 @@
 // ─── Config ───────────────────────────────────────────────────────
 const SUPABASE_URL      = 'https://myfgfszskdrocgacpsmb.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15Zmdmc3pza2Ryb2NnYWNwc21iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5OTU4NjQsImV4cCI6MjA5ODU3MTg2NH0.BQ396brLnxymrRmDolSaDOJctDl-QZn7yXoVJNjEsco';
+const VAPID_PUBLIC_KEY  = 'BPgy3c7elI-65y8aN-a1lp-g5TkgnbMv0I5ZemF3IqeIOX7UMNM4W2ZADiw5bo1pJ6pp20imIMeENgz9WBWFc3Q';
 const COLORS = ['#7c6af7','#4caf7d','#f0a500','#f75a5a','#38bdf8','#e879f9','#fb923c','#a3e635','#06b6d4','#f472b6'];
 
 // ─── State ────────────────────────────────────────────────────────
@@ -169,6 +170,13 @@ function saveSettings() {
   settings.quietFrom = document.getElementById('quiet-from').value;
   settings.quietTo   = document.getElementById('quiet-to').value;
   save();
+  if (settings.notifsEnabled && currentUser && supabaseReady) {
+    db.from('push_subscriptions').update({
+      quiet_from:  settings.quietFrom,
+      quiet_to:    settings.quietTo,
+      active_days: settings.activeDays ?? [1,2,3,4,5]
+    }).eq('user_id', currentUser.id).then(() => {});
+  }
 }
 
 function toggleDay(d) {
@@ -183,10 +191,11 @@ function toggleDay(d) {
 
 function toggleNotifs(el) {
   if (el.checked) {
-    Notification.requestPermission().then(p => {
+    Notification.requestPermission().then(async p => {
       if (p === 'granted') {
         settings.notifsEnabled = true; save();
         new Notification('Stems 🌿', { body: 'Hourly reminders are on!' });
+        await subscribePush();
       } else {
         el.checked = false;
         settings.notifsEnabled = false; save();
@@ -194,7 +203,43 @@ function toggleNotifs(el) {
     });
   } else {
     settings.notifsEnabled = false; save();
+    unsubscribePush();
   }
+}
+
+async function subscribePush() {
+  if (!('serviceWorker' in navigator) || !currentUser || !supabaseReady) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    await db.from('push_subscriptions').upsert({
+      user_id:     currentUser.id,
+      subscription: sub.toJSON(),
+      quiet_from:  settings.quietFrom,
+      quiet_to:    settings.quietTo,
+      active_days: settings.activeDays ?? [1,2,3,4,5]
+    }, { onConflict: 'user_id' });
+  } catch (e) { console.error('Push subscribe failed', e); }
+}
+
+async function unsubscribePush() {
+  if (!('serviceWorker' in navigator) || !currentUser || !supabaseReady) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+    await db.from('push_subscriptions').delete().eq('user_id', currentUser.id);
+  } catch (e) { console.error('Push unsubscribe failed', e); }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw     = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
 // ─── Autocomplete ─────────────────────────────────────────────────
@@ -704,6 +749,20 @@ async function pushLocalToSupabase(remoteBranches, remoteLogs) {
 
 // ─── Service Worker ───────────────────────────────────────────────
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(console.error);
+
+// ─── Re-auth on app focus (handles backgrounded PWA session expiry) ──
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && supabaseReady) {
+    db.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        if (!currentUser) { currentUser = session.user; startApp(); }
+        syncFromSupabase();
+      } else if (currentUser) {
+        currentUser = null; showAuthScreen();
+      }
+    });
+  }
+});
 
 // ─── Init ─────────────────────────────────────────────────────────
 applyTheme(localStorage.getItem('gt_theme') || 'dark');
