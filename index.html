@@ -118,17 +118,17 @@
       </div>
       <div class="settings-row" style="flex-direction:column;align-items:flex-start;">
         <div>
-          <div class="settings-label">Quiet hours</div>
-          <div class="settings-sub">No reminders during this window</div>
+          <div class="settings-label">Active hours</div>
+          <div class="settings-sub">Only remind me during this window</div>
         </div>
         <div class="time-row" style="width:100%;">
           <div>
             <div class="form-label" style="margin-top:10px;">From</div>
-            <input type="time" id="quiet-from" value="22:00" onchange="saveSettings()">
+            <input type="time" id="active-from" value="08:00" onchange="saveSettings()">
           </div>
           <div>
             <div class="form-label" style="margin-top:10px;">To</div>
-            <input type="time" id="quiet-to" value="08:00" onchange="saveSettings()">
+            <input type="time" id="active-to" value="22:00" onchange="saveSettings()">
           </div>
         </div>
       </div>

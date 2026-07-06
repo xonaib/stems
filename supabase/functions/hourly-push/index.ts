@@ -36,13 +36,13 @@ Deno.serve(async (req) => {
       const activeDays: number[] = row.active_days ?? [1,2,3,4,5];
       if (!activeDays.includes(localDay)) { skipped++; continue; }
 
-      // Check quiet hours in local time
-      const [fH] = (row.quiet_from ?? '22:00').split(':').map(Number);
-      const [tH] = (row.quiet_to   ?? '08:00').split(':').map(Number);
-      const inQuiet = fH > tH
-        ? localHour >= fH || localHour < tH
-        : localHour >= fH && localHour < tH;
-      if (inQuiet) { skipped++; continue; }
+      // Check active hours in local time
+      const [fH] = (row.active_from ?? '08:00').split(':').map(Number);
+      const [tH] = (row.active_to   ?? '22:00').split(':').map(Number);
+      const isActive = fH <= tH
+        ? localHour >= fH && localHour < tH
+        : localHour >= fH || localHour < tH;
+      if (!isActive) { skipped++; continue; }
 
       await webpush.sendNotification(
         row.subscription,

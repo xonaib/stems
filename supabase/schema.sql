@@ -41,14 +41,22 @@ create index if not exists logs_branch_id on logs (branch_id);
 
 -- Push subscriptions table (for background notifications)
 create table if not exists push_subscriptions (
-  id          uuid default gen_random_uuid() primary key,
-  user_id     uuid references auth.users not null unique,
-  subscription jsonb not null,
-  quiet_from  text default '22:00',
-  quiet_to    text default '08:00',
-  active_days int[] default '{1,2,3,4,5}',
-  created_at  timestamptz default now()
+  id                  uuid default gen_random_uuid() primary key,
+  user_id             uuid references auth.users not null unique,
+  subscription        jsonb not null,
+  active_from         text default '08:00',
+  active_to           text default '22:00',
+  active_days         int[] default '{1,2,3,4,5}',
+  utc_offset_minutes  integer default 0,
+  created_at          timestamptz default now()
 );
+
+-- Migration (run if table already exists with old quiet_from/quiet_to columns):
+-- ALTER TABLE push_subscriptions RENAME COLUMN quiet_from TO active_from;
+-- ALTER TABLE push_subscriptions RENAME COLUMN quiet_to   TO active_to;
+-- ALTER TABLE push_subscriptions ALTER COLUMN active_from SET DEFAULT '08:00';
+-- ALTER TABLE push_subscriptions ALTER COLUMN active_to   SET DEFAULT '22:00';
+-- UPDATE push_subscriptions SET active_from = '08:00', active_to = '22:00';
 
 alter table push_subscriptions enable row level security;
 

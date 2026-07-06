@@ -7,7 +7,14 @@ const COLORS = ['#7c6af7','#4caf7d','#f0a500','#f75a5a','#38bdf8','#e879f9','#fb
 // ─── State ────────────────────────────────────────────────────────
 let branches = JSON.parse(localStorage.getItem('gt_branches') || '[]');
 let logs     = JSON.parse(localStorage.getItem('gt_logs')     || '[]');
-let settings = JSON.parse(localStorage.getItem('gt_settings') || '{"quietFrom":"22:00","quietTo":"08:00","notifsEnabled":false,"activeDays":[1,2,3,4,5]}');
+let rawSettings = JSON.parse(localStorage.getItem('gt_settings') || '{}');
+// Migrate from old quiet-hours keys to active-hours keys
+if (rawSettings.quietFrom && !rawSettings.activeFrom) {
+  rawSettings.activeFrom = rawSettings.quietTo  || '08:00';
+  rawSettings.activeTo   = rawSettings.quietFrom || '22:00';
+  delete rawSettings.quietFrom; delete rawSettings.quietTo;
+}
+let settings = Object.assign({ activeFrom:'08:00', activeTo:'22:00', notifsEnabled:false, activeDays:[1,2,3,4,5] }, rawSettings);
 
 let selectedBranchId  = null;
 let selectedBranchNew = null;
@@ -149,8 +156,8 @@ function renderBranchesPage() {
   }).join('') : '<div class="empty"><span>🌱</span>Add your first branch below</div>';
 
   document.getElementById('notif-toggle').checked = settings.notifsEnabled;
-  document.getElementById('quiet-from').value     = settings.quietFrom;
-  document.getElementById('quiet-to').value       = settings.quietTo;
+  document.getElementById('active-from').value    = settings.activeFrom;
+  document.getElementById('active-to').value      = settings.activeTo;
   renderDayPicker();
 }
 
@@ -167,13 +174,13 @@ function renderDayPicker() {
 
 // ─── Settings ─────────────────────────────────────────────────────
 function saveSettings() {
-  settings.quietFrom = document.getElementById('quiet-from').value;
-  settings.quietTo   = document.getElementById('quiet-to').value;
+  settings.activeFrom = document.getElementById('active-from').value;
+  settings.activeTo   = document.getElementById('active-to').value;
   save();
   if (settings.notifsEnabled && currentUser && supabaseReady) {
     db.from('push_subscriptions').update({
-      quiet_from:  settings.quietFrom,
-      quiet_to:    settings.quietTo,
+      active_from: settings.activeFrom,
+      active_to:   settings.activeTo,
       active_days: settings.activeDays ?? [1,2,3,4,5]
     }).eq('user_id', currentUser.id).then(() => {});
   }
@@ -218,8 +225,8 @@ async function subscribePush() {
     await db.from('push_subscriptions').upsert({
       user_id:             currentUser.id,
       subscription:        sub.toJSON(),
-      quiet_from:          settings.quietFrom,
-      quiet_to:            settings.quietTo,
+      active_from:         settings.activeFrom,
+      active_to:           settings.activeTo,
       active_days:         settings.activeDays ?? [1,2,3,4,5],
       utc_offset_minutes:  new Date().getTimezoneOffset()
     }, { onConflict: 'user_id' });
@@ -580,19 +587,20 @@ function calcStreak() {
 }
 
 // ─── Hourly Reminder ──────────────────────────────────────────────
-function isInQuietHours() {
+function isInActiveHours() {
   const now = new Date(), cur = now.getHours() * 60 + now.getMinutes();
-  const [fH, fM] = settings.quietFrom.split(':').map(Number);
-  const [tH, tM] = settings.quietTo.split(':').map(Number);
+  const [fH, fM] = (settings.activeFrom || '08:00').split(':').map(Number);
+  const [tH, tM] = (settings.activeTo   || '22:00').split(':').map(Number);
   const from = fH * 60 + fM, to = tH * 60 + tM;
-  return from > to ? cur >= from || cur < to : cur >= from && cur < to;
+  // Active window: from <= cur < to (handles midnight-crossing if from > to)
+  return from <= to ? cur >= from && cur < to : cur >= from || cur < to;
 }
 function isActiveDay() {
   const day = new Date().getDay(); // 0=Sun, 1=Mon … 6=Sat
   return (settings.activeDays || [1,2,3,4,5]).includes(day);
 }
 function maybeRemind() {
-  if (!settings.notifsEnabled || Notification.permission !== 'granted' || isInQuietHours() || !isActiveDay()) return;
+  if (!settings.notifsEnabled || Notification.permission !== 'granted' || !isInActiveHours() || !isActiveDay()) return;
   const now = new Date();
   const hourKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
   if (localStorage.getItem('gt_last_notif_hour') !== hourKey) {
