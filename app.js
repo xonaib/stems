@@ -116,6 +116,10 @@ function startEditBranch(id, el) {
     if (name && name !== b.name) {
       b.name = name;
       save();
+      if (currentUser && supabaseReady) {
+        db.from('branches').update({ name }).eq('id', b.id).eq('user_id', currentUser.id)
+          .then(({ error }) => { if (error) console.error('Rename sync error', error); });
+      }
       showToast(`Renamed to "${name}"`);
     }
     renderBranchesPage();
@@ -127,10 +131,14 @@ function startEditBranch(id, el) {
   });
 }
 
-function deleteBranch(id) {
+async function deleteBranch(id) {
   if (!confirm('Delete this branch? Logs will remain but unlinked.')) return;
   branches = branches.filter(b => b.id !== id);
   save(); renderBranchesPage();
+  if (currentUser && supabaseReady) {
+    const { error } = await db.from('branches').delete().eq('id', id).eq('user_id', currentUser.id);
+    if (error) console.error('Delete branch sync error', error);
+  }
 }
 
 function renderBranchesPage() {
@@ -730,16 +738,23 @@ async function syncFromSupabase() {
   if (!currentUser || !supabaseReady) return;
   showSync('Syncing…');
   try {
+    // 1. See what's on the server right now.
     const [{ data: remoteBranches }, { data: remoteLogs }] = await Promise.all([
       db.from('branches').select('*').eq('user_id', currentUser.id),
       db.from('logs').select('*').eq('user_id', currentUser.id).order('ts', { ascending: false })
     ]);
-    const bIds = new Set(branches.map(b => b.id));
-    (remoteBranches || []).forEach(b => { if (!bIds.has(b.id)) branches.push({ id: b.id, name: b.name, color: b.color }); });
-    const lIds = new Set(logs.map(l => l.id));
-    (remoteLogs || []).forEach(l => { if (!lIds.has(l.id)) logs.push({ id: l.id, branchId: l.branch_id, minutes: l.minutes, note: l.note || '', ts: l.ts }); });
-    logs.sort((a, b) => b.ts - a.ts);
+    // 2. Push up anything that only exists locally (e.g. created while offline).
     await pushLocalToSupabase(remoteBranches || [], remoteLogs || []);
+    // 3. Re-fetch and let Supabase win: local state is replaced with the server's,
+    //    so anything deleted/renamed elsewhere doesn't linger in this device's
+    //    cache and get re-uploaded on a future sync.
+    const [{ data: finalBranches }, { data: finalLogs }] = await Promise.all([
+      db.from('branches').select('*').eq('user_id', currentUser.id),
+      db.from('logs').select('*').eq('user_id', currentUser.id).order('ts', { ascending: false })
+    ]);
+    branches = (finalBranches || []).map(b => ({ id: b.id, name: b.name, color: b.color }));
+    logs     = (finalLogs || []).map(l => ({ id: l.id, branchId: l.branch_id, minutes: l.minutes, note: l.note || '', ts: l.ts }));
+    logs.sort((a, b) => b.ts - a.ts);
     save();
     renderDash();
   } catch (e) { console.error('Sync error', e); }
